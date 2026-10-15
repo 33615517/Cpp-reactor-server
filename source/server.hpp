@@ -42,6 +42,8 @@
  *
  * 每个 Eventloop 应由固定线程驱动；其他线程需要通过任务队列和 eventfd
  * 把操作投递给该线程，避免并发修改 Poller、Channel 和 Connection 的状态。
+ * TcpServer 的主循环负责接收连接和维护连接表，工作循环负责连接的 I/O
+ * 与业务回调；未配置工作线程时，两类工作都由主循环完成。
  */
 
 // Buffer 的默认初始容量，空间不足时会自动扩容。
@@ -49,6 +51,7 @@
 
 // 可自动扩容的字节缓冲区。
 // [_read_idx, _write_idx) 是可读区；其余部分是已经消费或尚未使用的空间。
+// 读写指针只用于临时访问，扩容或整理数据后需要重新获取；该类本身不加锁。
 class Buffer
 {
 private:
@@ -70,7 +73,7 @@ public:
     }
 
     // 获取当前可读位置。
-    void *ReadPosition()
+    char *ReadPosition()
     {
         return _buffer.data() + _read_idx;
     }
@@ -121,10 +124,12 @@ public:
         }
         else if (TailIdleSize() + HeadIdleSize() < len)
         {
+            // 总空闲空间不足，保留现有读写位置并扩大尾部空间。
             _buffer.resize(_write_idx + len);
         }
         else
         {
+            // 将未消费的数据移到开头，回收读下标之前的空间。
             uint32_t readable = ReadAbleSize();
             std::copy(_buffer.data() + _read_idx, _buffer.data() + _write_idx, _buffer.data());
             _read_idx = 0;
@@ -207,14 +212,15 @@ public:
         return str;
     }
 
-    // 在可读区中查找下一处换行符；找不到时返回 nullptr。
+    // 在可读区中查找 '\n'；名称虽为 CRLF，但不要求前一个字符是 '\r'。
+    // 找不到换行符时返回 nullptr，供上层判断一行数据是否接收完整。
     char *FindCRLF()
     {
         char *res = (char *)memchr(ReadPosition(), '\n', ReadAbleSize());
         return res;
     }
 
-    // 获取一行数据，但不移动读下标。
+    // 获取包含末尾换行符的一行数据，不移动读下标；不足一行时返回空字符串。
     std::string GetLine()
     {
         char *crlf = FindCRLF();
@@ -323,8 +329,9 @@ public:
         }
         return newfd;
     }
-    // 接收数据：返回实际字节数；暂时无数据或被信号中断返回 0；失败返回 -1。
-    ssize_t Recv(void *buf, size_t len, int flags)
+    // 接收数据：正值表示字节数；EAGAIN/EINTR 按当前实现返回 0，其他异常返回 -1。
+    // recv() 返回 0 时也进入异常分支，当前实现没有单独区分对端关闭。
+    ssize_t Recv(void *buf, size_t len, int flags = 0)
     {
         ssize_t ret = recv(_sockfd, buf, len, flags);
         if (ret <= 0)
@@ -335,7 +342,7 @@ public:
             }
             else
             {
-                DUALLOG_ERROR("recv failed: %s", strerror(errno));
+                //DUALLOG_ERROR("recv failed: %s", strerror(errno));
                 return -1;
             }
         }
@@ -351,6 +358,7 @@ public:
     // 发送数据：返回实际字节数；暂时不可写或被信号中断返回 0；失败返回 -1。
     ssize_t Send(const void *buf, size_t len, int flags = 0)
     {
+        // 向已关闭的连接发送时抑制 SIGPIPE，让调用者通过返回值处理错误。
         ssize_t ret = send(_sockfd, buf, len, flags | MSG_NOSIGNAL);
         if (ret < 0)
         {
@@ -382,14 +390,15 @@ public:
             _sockfd = -1;
         }
     }
-    // 一次完成服务端套接字的创建、属性设置、地址绑定和监听。
+    // 创建服务端套接字；block_flag 为 true 时实际开启非阻塞模式。
     bool CreateServer(uint16_t port, const std::string &ip = "0.0.0.0", bool block_flag = false)
     {
-        // 1.创建套接字 2.绑定地址 3.开始监听 4.设置非阻塞 5.启动地址重用
+        // 地址复用必须在绑定前设置，才能在旧连接处于 TIME_WAIT 时重新监听。
         if (!Create())
         {
             return false;
         }
+        ReuseAddress();
         if (block_flag)
             NonBlock();
         if (!Bind(ip, port))
@@ -400,7 +409,6 @@ public:
         {
             return false;
         }
-        ReuseAddress();
         return true;
     }
     // 一次完成客户端套接字的创建以及到服务器的连接。
@@ -534,6 +542,7 @@ public:
     // 最后调用一次通用事件回调。
     void HandleEvent()
     {
+        // 读事件单独处理；对端半关闭时也先尝试读取尚未消费的数据。
         if ((_revents & EPOLLIN) || (_revents & EPOLLPRI) || (_revents & EPOLLRDHUP))
         {
             if (_read_callback)
@@ -542,6 +551,7 @@ public:
             }
         }
 
+        // 当前分支按写、错误、挂断的优先级处理，三者在本轮最多执行一个。
         if (_revents & EPOLLOUT)
         {
             if (_write_callback)
@@ -576,6 +586,7 @@ public:
 
 // epoll 管理器，负责维护 fd 与 Channel 的映射、注册关注事件并等待事件就绪。
 // Poller 没有内部锁，应当只由所属 Eventloop 线程访问。
+// Channel 未设置 EPOLLET，当前使用水平触发；未读完的数据会再次触发可读事件。
 class Poller
 {
 private:
@@ -721,6 +732,7 @@ public:
 // 以一秒为一个刻度的单层时间轮。
 // _wheel 中的 shared_ptr 控制任务生命周期，_tick 每秒向前移动一个槽；
 // 添加、刷新和取消操作统一投递到所属 Eventloop，以保持线程安全。
+// 当前有 60 个槽，常规延迟范围为 1～60 秒；没有跨轮计数，超出范围会取模。
 class TimerWheel
 {
 private:
@@ -769,8 +781,7 @@ private:
     int ReadTimeFd()
     {
         uint64_t times;
-        // 有可能因为其他描述符的事件处理花费事件比较长，然后在处理定时器描述符事件的时候，有可能就已经超时了很多次
-        // read读取到的数据times就是从上一次read之后超时的次数
+        // 其他回调耗时较长时，timerfd 会累计多次到期；times 是上次读取后的到期次数。
         int ret = read(_timerfd, &times, 8);
         if (ret < 0)
         {
@@ -795,6 +806,7 @@ private:
         */
         _wheel[_tick].clear();
     }
+    // timerfd 的可读回调：补走所有累计刻度，避免事件循环忙碌时漏掉超时任务。
     void OnTime()
     {
         // 根据实际超时的次数，执行对应的超时任务
@@ -869,6 +881,7 @@ private:
             if (!pt)
                 return;
 
+            // 只设置取消标志，槽中的引用仍保留到该槽被清空时再释放。
             pt->Cancel();
         }
     }
@@ -881,7 +894,7 @@ public:
           _wheel(_capacity),
           _loop(loop),
           _timerfd(CreateTimerFd()),
-          _timer_channel(std::make_unique<Channel>(loop, _timerfd))
+          _timer_channel(new Channel(_loop, _timerfd))
     {
         _timer_channel->SetReadCallback(std::bind(&TimerWheel::OnTime, this));
         _timer_channel->EnableRead(); // 启动读时间监控
@@ -920,10 +933,10 @@ private:
     int _event_fd;                           // 用于唤醒阻塞中的 epoll_wait()
     std::unique_ptr<Channel> _event_channel; // 监听 _event_fd 可读事件的 Channel
     Poller _poller;                          // 当前循环唯一的 epoll 管理器
-    using Functor = std::function<void()>;
-    std::vector<Functor> _task; // 其他线程投递、等待在循环线程执行的任务队列
-    std::mutex _mutex;          // 保护 _task 的并发访问
-    TimerWheel _timer_wheel;    // 由当前循环驱动的定时器时间轮
+    using Functor = std::function<void()>;   // 投递到循环线程执行的无参数任务
+    std::vector<Functor> _task;              // 其他线程投递、等待在循环线程执行的任务队列
+    std::mutex _mutex;                       // 保护 _task 的并发访问
+    TimerWheel _timer_wheel;                 // 由当前循环驱动的定时器时间轮
 public:
     // 取出任务队列的当前快照并逐个执行，执行回调时不持有互斥锁。
     void RunAllTask()
@@ -931,6 +944,7 @@ public:
         std::vector<Functor> tasks;
         {
             std::unique_lock<std::mutex> lock(_mutex);
+            // 快速交换队列后释放锁，任务执行期间其他线程仍可继续投递。
             tasks.swap(_task);
         }
         for (const auto &task : tasks)
@@ -1017,6 +1031,7 @@ public:
             std::unique_lock<std::mutex> lock(_mutex);
             _task.push_back(cb);
         }
+        // 先入队再唤醒，循环线程被唤醒时才能看到本次任务。
         WeakUpEventFd();
     }
     // 将 Channel 当前关注的事件同步到 Poller。
@@ -1029,7 +1044,7 @@ public:
     {
         return _poller.RemoveEvent(channel);
     }
-    // 执行一轮 Reactor：等待事件、分发就绪回调、执行任务队列。
+    // 持续运行 Reactor：每轮等待事件、分发就绪回调，再执行任务队列。
     void Start()
     {
         while (true)
@@ -1065,19 +1080,22 @@ public:
     }
 };
 
+// 将一个工作线程与其专属 Eventloop 绑定，实现 One Thread One Loop。
+// Eventloop 在工作线程入口中创建，Getloop() 等待初始化完成后才返回地址。
 class LoopThread
 {
 private:
     /*用于实现_loop获取的同步关系，避免线程创建了，但是_loop还没有实例化之前去获取_loop*/
-    std::mutex _mutex;             // 互斥锁
-    std::condition_variable _cond; // 条件变量
-    Eventloop *_loop;              // Eventloop指针变量，这个对象需要在线程内实例化
-    std::thread _thread;           // EventLoop对应的线程
+    std::mutex _mutex;             // 保护 _loop 的发布与读取
+    std::condition_variable _cond; // 通知等待者：工作线程中的 Eventloop 已创建
+    Eventloop *_loop;              // 指向 ThreadEntry() 的局部对象，不拥有该对象
+    std::thread _thread;           // 驱动该 Eventloop 的工作线程
 private:
     // 实例化Eventloop对象,唤醒_cond上可能阻塞的线程，并且开始运行Eventloop模块的功能
     void ThreadEntry()
     {
 
+        // 在工作线程中构造，确保 Eventloop 记录的线程 ID 与执行线程一致。
         Eventloop loop;
         {
             std::unique_lock<std::mutex> lock(_mutex);
@@ -1092,7 +1110,7 @@ public:
     LoopThread() : _loop(nullptr), _thread(std::thread(&LoopThread::ThreadEntry, this))
     {
     }
-    // 返回当前线程关联的Eventloop对象指针
+    // 等待初始化后返回工作线程的 Eventloop；条件谓词同时处理提前通知和虚假唤醒。
     Eventloop *Getloop()
     {
         std::unique_lock<std::mutex> lock(_mutex);
@@ -1101,21 +1119,24 @@ public:
         return _loop;
     }
 };
+// 管理多个 LoopThread，并以轮询方式为新连接分配工作 Eventloop。
+// 分配由主循环完成；没有工作线程时退回主 Eventloop。
 class LoopThreadPool
 {
 private:
-    int _thread_count; // 从属线程的数量
-    int _next_loop_idx;
-    Eventloop *_baseloop;               // 主Eventloop，运行在主线程，从属线程数量为0，则所有线程操作都在baseloop中进行
+    int _thread_count;                  // 从属线程的数量
+    int _next_loop_idx;                 // 轮询分配时使用的工作循环下标
+    Eventloop *_baseloop;               // 无工作线程时负责全部连接 I/O 的主循环
     std::vector<LoopThread *> _threads; // 保存所有的LoopThread对象
     std::vector<Eventloop *> _loops;    // 从属线程数量大于0则从_loops中进行线程EventLoop的分配
 public:
+    // 记录主循环，初始不创建工作线程。
     LoopThreadPool(Eventloop *baseloop) : _thread_count(0),
                                           _next_loop_idx(0),
                                           _baseloop(baseloop)
     {
     }
-    // 设置线程数量
+    // 配置工作线程数量，应在 Create() 启动线程前设置。
     void SetThreadCount(int count)
     {
         _thread_count = count;
@@ -1134,6 +1155,7 @@ public:
             }
         }
     }
+    // 获取本次连接应归属的 Eventloop；工作循环存在时轮询分配。
     Eventloop *Nextloop()
     {
         if (_thread_count == 0 || _threads.size() == 0)
@@ -1163,8 +1185,11 @@ private:
     class holder
     {
     public:
+        // 通过基类指针释放实际包装对象时，同时析构其中保存的数据。
         virtual ~holder() {}
+        // 返回被包装数据的实际类型，供 get<T>() 校验。
         virtual const std::type_info &type() = 0;
+        // 复制一个独立的包装对象，避免两个 Any 共同持有同一裸指针。
         virtual holder *clone() = 0;
     };
 
@@ -1208,7 +1233,7 @@ public:
         return *this;
     }
 
-    // 按指定类型获取数据地址；类型不一致时触发断言。
+    // 按指定类型获取数据地址；必须先保存数据，且请求类型必须与保存类型一致。
     template <class T>
     T *get()
     {
@@ -1233,6 +1258,7 @@ public:
 };
 
 class Connection;
+// 连接表和异步任务共同持有连接，最后一个引用释放后才析构对象。
 using PtrConnection = std::shared_ptr<Connection>;
 
 // 一个已接收 TCP 连接的生命周期管理对象。
@@ -1274,7 +1300,7 @@ private:
         if (n < 0)
         {
             ShutdownInLoop();
-            return;
+             return;
         }
         _in_buffer.WriteAndPush(buf, n);
         if (_in_buffer.ReadAbleSize() > 0)
@@ -1292,16 +1318,18 @@ private:
             if (_in_buffer.ReadAbleSize() > 0 && _message_callback)
                 _message_callback(shared_from_this(), &_in_buffer);
 
-            ReleaseInLoop();
+            Release();
             return;
         }
+        // 非阻塞发送可能只写出部分数据，只消费实际发送的字节，余下部分留待下次。
         _out_buffer.MoveReadOffset(ret);
         if (_out_buffer.ReadAbleSize() == 0)
         {
+            // TCP 通常一直可写，没有待发数据时取消写监控，避免循环被反复唤醒。
             _channel.DisableWrite();
             if (_statu == DISCONNECTING)
             {
-                ShutdownInLoop();
+                Release();
                 return;
             }
         }
@@ -1314,9 +1342,8 @@ private:
         if (_in_buffer.ReadAbleSize() > 0)
         {
             _message_callback(shared_from_this(), &_in_buffer);
-            return;
         }
-        ReleaseInLoop();
+        Release();
         return;
     }
     // 描述符触发出错事件
@@ -1344,7 +1371,7 @@ private:
         // 3.触发连接建立回调函数
         assert(_statu == CONNECTING); // 当前连接状态必须是连接建立中
         _statu = CONNECTED;
-        // 一旦启动读事件监控，就会触发可读事件回调函数HandleRead()，从而触发消息处理回调函数
+        // 注册后，后续就绪事件由事件循环分发到 HandleRead()，再通知业务层。
         _channel.EnableRead();
         if (_connection_callback)
         {
@@ -1355,6 +1382,7 @@ private:
     // 在 Eventloop 线程中真正释放连接：移除事件、关闭 fd、取消定时器并触发回调。
     void ReleaseInLoop()
     {
+        if (_statu == DISCONNECTED) return;
         // 1.修改连接状态为断开，将其置为DISCONNECTED状态，表示连接断开
         _statu = DISCONNECTED;
         // 2.移除连接的事件监控
@@ -1405,7 +1433,7 @@ private:
 
         if (_out_buffer.ReadAbleSize() == 0)
         {
-            ReleaseInLoop();
+            Release();
             return;
         }
 
@@ -1428,7 +1456,7 @@ private:
         }
         else
         {
-            _loop->TimerAdd(_id, sec, std::bind(&Connection::ReleaseInLoop, shared_from_this()));
+            _loop->TimerAdd(_id, sec, std::bind(&Connection::Release, shared_from_this()));
         }
     }
     // 在 Eventloop 线程中关闭空闲连接释放，并取消对应定时任务。
@@ -1476,7 +1504,7 @@ public:
     // 记录连接对象析构；正常情况下底层 fd 由 ReleaseInLoop() 提前关闭。
     ~Connection()
     {
-        DUALLOG_INFO("RELEASE CONNECTION:%p", this);
+        //DUALLOG_INFO("RELEASE CONNECTION:%p", this);
     }
     // 获取当前连接管理的文件描述符。
     int Fd()
@@ -1539,12 +1567,18 @@ public:
     {
         Buffer buf;
         buf.WriteAndPush(date, len);
+        // 任务保存缓冲区和连接的共享引用，跨线程等待期间不会依赖调用者的内存。
         _loop->RunInloop(std::bind(&Connection::SendInLoop, shared_from_this(), std::move(buf)));
     }
     // 线程安全地发起优雅关闭；该接口不会立即丢弃尚未发送的数据。
     void Shutdown()
     {
         _loop->RunInloop(std::bind(&Connection::ShutdownInLoop, shared_from_this()));
+    }
+    void Release()
+    {
+        _loop->QueueInLoop(
+            std::bind(&Connection::ReleaseInLoop, shared_from_this()));
     }
     // 启用非活跃连接释放，sec 表示允许的最大空闲秒数。
     void EnableInactiveRelease(int sec)
@@ -1565,6 +1599,7 @@ public:
     }
 };
 
+// 监听端口的事件入口；主循环收到可读事件时 accept()，再把新 fd 交给 TcpServer。
 class Acceptor
 {
 private:
@@ -1572,8 +1607,8 @@ private:
     Eventloop *_loop; // 用于对监听套接字进行事件监控
     Channel _channel; // 用于对监听套接字进行事件管理
 
-    using AcceptCallback = std::function<void(int)>;
-    AcceptCallback _accept_callback;
+    using AcceptCallback = std::function<void(int)>; // 接收新连接 fd 的回调类型
+    AcceptCallback _accept_callback;                 // 通知上层创建并管理 Connection
 
 private:
     /*监听套接字的读事件回调处理函数---获取新连接，调用_accept_callback函数进行新连接处理*/
@@ -1587,6 +1622,7 @@ private:
         if (_accept_callback)
             _accept_callback(newfd);
     }
+    // 创建监听套接字并返回 fd，供 _channel 构造时绑定。
     int CreateServer(int port)
     {
         bool ret = _socket.CreateServer(port);
@@ -1597,6 +1633,7 @@ private:
 public:
     /*不能将启动读事件监控，放到构造函数中，必须在设置回调函数后，再去启动*/
     /*否则有可能造成启动监控后，立即有事件，处理的时候，回调函数还没设置：新连接得不到处理，且资源泄漏*/
+    // 创建监听 socket 并安装内部读回调，事件注册由 Listen() 单独完成。
     Acceptor(Eventloop *loop, int port)
         : _socket(),
           _loop(loop),
@@ -1605,22 +1642,26 @@ public:
         _channel.SetReadCallback(
             std::bind(&Acceptor::HandleRead, this));
     }
+    // 设置新连接回调，应在 Listen() 开启事件监控前调用。
     void SetAcceptCallback(const AcceptCallback &cb) { _accept_callback = cb; }
+    // socket 已在构造阶段进入监听状态；这里仅向主循环注册可读事件。
     void Listen() { _channel.EnableRead(); }
 };
 
+// TCP 服务的组装入口：主循环接收连接，线程池处理连接 I/O，回调衔接具体业务。
+// _conns 只在主循环中增删，Connection 的状态和缓冲区由各自所属循环维护。
 class TcpServer
 {
 private:
-    uint64_t _next_id; // 这是一个自动增长的的连接ID
-    int _port;
+    uint64_t _next_id;             // 主循环分配的递增 ID，连接与 RunAfter() 任务共用
+    int _port;                     // 服务监听端口
     int _timeout;                  // 非活跃连接的统计时间--多长时间无通信就是非活跃连接
     bool _enable_inactive_release; // 是否启动非活跃连接超时销毁的标志
 
-    Eventloop _baseloop;  // 这是主线程的EventLoop对象，负责监听事件的处理
-    Acceptor _acceptor;   // 这是监听套接字的管理对象
-    LoopThreadPool _pool; // 这个是从属Eventloop线程池
-    std::unordered_map<uint64_t, PtrConnection> _conns;
+    Eventloop _baseloop;                                // 这是主线程的EventLoop对象，负责监听事件的处理
+    Acceptor _acceptor;                                 // 这是监听套接字的管理对象
+    LoopThreadPool _pool;                               // 这个是从属Eventloop线程池
+    std::unordered_map<uint64_t, PtrConnection> _conns; // 持有活动连接的共享引用，按 ID 索引
 
     // 由上层服务器或业务模块设置的连接回调类型。
     using ConnectionCallback = std::function<void(const PtrConnection &)>;
@@ -1628,19 +1669,20 @@ private:
     using CloseCallback = std::function<void(const PtrConnection &)>;
     using AnyEventCallback = std::function<void(const PtrConnection &)>;
 
-    using Functor = std::function<void()>;
+    using Functor = std::function<void()>; // RunAfter() 接收的延迟任务类型
 
     MessageCallback _message_callback;       // 输入缓冲区出现数据时调用
     ConnectionCallback _connection_callback; // 连接完成初始化后调用
     CloseCallback _close_callback;           // 连接关闭时通知业务层
     AnyEventCallback _event_callback;        // 每次 Channel 事件处理后调用
-    CloseCallback _server_closed_callback;   // 通知服务器从连接表中移除当前对象
+    CloseCallback _server_closed_callback;   // 当前 TcpServer 中未使用；连接移除回调在 NewConnection() 中绑定
 private:
-    // 从管理Connection的_conns中移除连接信息
+    // 关闭通知可能来自工作线程，先投递到主循环，再修改连接表。
     void RemoveConnection(const PtrConnection &conn)
     {
         _baseloop.RunInloop(std::bind(&TcpServer::RemoveConnectionInLoop, this, conn));
     }
+    // 在主循环中移除连接的服务器引用；其他异步任务仍可持有该连接。
     void RemoveConnectionInLoop(const PtrConnection &conn)
     {
         int id = conn->Id();
@@ -1654,11 +1696,13 @@ private:
     void NewConnection(int fd)
     {
         _next_id++;
+        // 为连接选定唯一的工作循环，后续 I/O 和业务回调都由该循环执行。
         PtrConnection conn(new Connection(_pool.Nextloop(), _next_id, fd));
         conn->SetMessageCallback(_message_callback);
         conn->SetCloseCallback(_close_callback);
         conn->SetConnectionCallback(_connection_callback);
         conn->SetAnyEventCallback(_event_callback);
+        // 业务关闭回调结束后，再通知主循环从连接表删除该连接。
         conn->SetServerClosedCallback(std::bind(&TcpServer::RemoveConnection, this, std::placeholders::_1));
         if (_enable_inactive_release)
             conn->EnableInactiveRelease(_timeout); // 启动非活跃超时销毁
@@ -1666,6 +1710,7 @@ private:
         _conns.insert(std::make_pair(_next_id, conn));
     }
 
+    // 在主循环中为一次性任务分配 ID，并放入主循环的时间轮。
     void RunAfterInLoop(const Functor &task, int delay)
     {
         _next_id++;
@@ -1673,6 +1718,7 @@ private:
     }
 
 public:
+    // 创建主循环、监听器和线程池，安装接收回调后才注册监听事件。
     TcpServer(uint16_t port) : _port(port),
                                _next_id(0),
                                _enable_inactive_release(false),
@@ -1683,6 +1729,7 @@ public:
         _acceptor.SetAcceptCallback(std::bind(&TcpServer::NewConnection, this, std::placeholders::_1));
         _acceptor.Listen(); // 将监听套接字挂到baseloop上
     }
+    // 配置工作线程数量，应在 start() 启动服务前调用。
     void SetThreadCount(int count)
     {
         _pool.SetThreadCount(count);
@@ -1707,24 +1754,27 @@ public:
     {
         _event_callback = cb;
     }
+    // 为此后创建的连接启用空闲超时释放；timeout 的单位是秒。
     void EnableInactiveRelease(int timeout)
     {
         _timeout = timeout;
         _enable_inactive_release = true;
     }
-    // 用于添加定时任务
+    // 线程安全地添加一次性延迟任务，delay 为秒数，回调在主循环线程中执行。
+    // 延迟范围受 TimerWheel 的单层时间轮容量限制。
     void RunAfter(const Functor &task, int delay)
     {
         _baseloop.RunInloop(std::bind(&TcpServer::RunAfterInLoop, this, task, delay));
     }
+    // 创建工作循环并进入主循环；该函数持续运行，不主动返回。
     void start()
     {
         _pool.Create();
         _baseloop.Start();
     }
 };
-void Channel::Remove()
 // 从所属 Poller 中移除当前 Channel。
+void Channel::Remove()
 {
     _loop->RemoveEvent(this);
 }
@@ -1753,15 +1803,18 @@ void TimerWheel::TimerCancel(uint64_t id)
     _loop->RunInloop(std::bind(&TimerWheel::TimerCancelInLoop, this, id));
 }
 
+// 网络运行环境初始化：忽略 SIGPIPE，避免对端关闭后写 socket 导致进程退出。
 class NetWork
 {
 public:
+    // 在静态初始化期间设置进程级信号处理方式。
     NetWork()
     {
         signal(SIGPIPE, SIG_IGN);
     }
 };
 
+// 头文件内的静态对象使每个引用该头文件的翻译单元在进入 main() 前完成初始化。
 static NetWork nw;
 
 #endif
