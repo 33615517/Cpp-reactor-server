@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>洛天依 · 让世界充满歌声</title>
+<style>
+:root{--blue:#66ccff;--deep:#228fc3;--ink:#25425d;--muted:#839caf;--line:#ddedf5}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:"Microsoft YaHei","Segoe UI",sans-serif;color:var(--ink);background:#f9fdff;overflow-x:hidden;padding-bottom:88px}
+a{text-decoration:none;color:inherit}button{font:inherit;cursor:pointer}
+.wrap{width:min(1160px,90%);margin:auto}
+nav{height:76px;display:flex;align-items:center;justify-content:space-between;position:relative;z-index:5}
+nav .logo{font-size:25px;letter-spacing:2px;font-weight:900;color:#329dd4}
+.logo small{font-size:11px;letter-spacing:3px;color:#9db5c3;display:block;font-weight:500}
+.links{display:flex;align-items:center;gap:38px;font-size:14px;font-weight:bold}
+.links a:hover{color:#44b3eb}
+.nav-btn{background:var(--blue);border:0;color:#fff;padding:12px 22px;border-radius:30px;font-weight:bold;box-shadow:0 7px 18px #66ccff55}
+.hero-shell{background:radial-gradient(ellipse at 77% 48%,#d3f5ff 0%,#e8faff 35%,transparent 65%),linear-gradient(145deg,#f8fcff,#e7f8ff 66%,#fff4fa);position:relative;overflow:hidden}
+.hero-shell::after{content:"";position:absolute;inset:0;background-image:radial-gradient(#74bfdf33 1px,transparent 1px);background-size:27px 27px;mask-image:linear-gradient(90deg,transparent,black);pointer-events:none}
+.hero{min-height:620px;display:grid;grid-template-columns:1fr 1fr;align-items:center;position:relative;z-index:1}
+.hero-copy{position:relative;z-index:2;padding:30px 0 75px}
+.eyebrow{display:inline-block;border:1px solid #b2e6fb;padding:9px 17px;border-radius:30px;color:#4cafe2;background:#ffffffaa;letter-spacing:2px;font-size:12px;font-weight:bold}
+h1{font-size:clamp(60px,8vw,106px);color:#46b7eb;line-height:1.22;letter-spacing:4px;text-shadow:3px 6px 0 #ffffffaa;margin:24px 0 6px}
+.english{letter-spacing:8px;font-weight:900;font-size:16px;color:#8ecde8}
+.lead{line-height:2.1;color:#69899d;font-size:16px;margin:29px 0}
+.btn-row{display:flex;gap:14px;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;border-radius:30px;padding:15px 28px;font-weight:800;font-size:14px;transition:.25s}
+.btn:hover{transform:translateY(-4px)}
+.btn-main{color:white;background:linear-gradient(115deg,#69d5ff,#3b9fd9);box-shadow:0 12px 22px #66ccff70}
+.btn-soft{color:#4aaee1;border:1px solid #abe4fa;background:#ffffffc7}
+.hero-art{height:580px;position:relative;display:flex;align-items:flex-end;justify-content:center}
+.halo{position:absolute;width:490px;height:490px;border:2px solid #ffffff90;box-shadow:0 0 0 27px #ffffff30,0 0 0 60px #ffffff22;border-radius:50%;top:66px;right:10px}
+.hero-art img{width:min(100%,535px);height:560px;object-fit:contain;object-position:bottom;position:relative;z-index:2;filter:drop-shadow(0 14px 20px #438da41c);mix-blend-mode:multiply;animation:bob 5s ease-in-out infinite}
+@keyframes bob{50%{transform:translateY(-13px)}}
+.float-label{position:absolute;z-index:3;background:#ffffffdc;border:1px solid #d8f2fa;backdrop-filter:blur(9px);border-radius:18px;padding:13px 18px;box-shadow:0 15px 28px #95bed01e;font-size:13px;font-weight:bold}
+.float-label.one{right:-8px;top:120px;color:#48aedb;animation:bob 4s ease-in-out infinite}
+.float-label.two{left:0;bottom:105px;color:#e38cb8;animation:bob 4.8s ease-in-out infinite}
+.note{position:absolute;color:#62c6ef;font-size:30px;animation:drift 7s ease-in-out infinite;opacity:.6;z-index:1}
+.note.a{top:95px;left:48%}.note.b{top:260px;right:7%;animation-delay:1.5s}.note.c{bottom:105px;left:45%;animation-delay:3s}
+@keyframes drift{50%{transform:translate(12px,-32px) rotate(16deg);opacity:1}}
+.wave{display:block;width:100%;height:65px;fill:#f9fdff;margin-top:-60px;position:relative;z-index:2}
+.section{padding:85px 0 20px}
+.section-heading{text-align:center;margin-bottom:45px}
+.section-heading .overline{color:#78bede;font-size:12px;font-weight:800;letter-spacing:4px}
+.section-heading h2{font-size:34px;margin:10px 0;color:#3a83ad}
+.section-heading p{color:var(--muted);font-size:14px;line-height:1.9}
+.about{display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:stretch}
+.about-card{border:1px solid var(--line);border-radius:25px;background:linear-gradient(135deg,#ffffff,#ecf9ff);padding:36px;box-shadow:0 15px 35px #74bed51a}
+.about-card h3{font-size:23px;color:#389bc9;margin-bottom:18px}
+.about-card p{color:#6f8b9c;line-height:2;font-size:14px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:28px}
+.stats div{text-align:center;background:white;border:1px solid #e1f1f8;border-radius:15px;padding:20px 5px}
+.stats strong{font-size:22px;color:#51b9e7;display:block;margin-bottom:5px}.stats span{font-size:12px;color:#99aebb}
+.birthday{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:13px;background:linear-gradient(140deg,#b8eaff,#e4d9ff 85%,#ffeafa);border:1px solid #d1eafa;border-radius:25px;padding:30px}
+.birthday .cake{font-size:40px}.birthday h3{font-size:24px;color:#448db5}.birthday p{font-size:13px;color:#698da7}
+.countdown{display:flex;gap:10px;margin-top:10px}.countdown div{min-width:70px;background:#ffffffab;padding:14px 9px;border-radius:12px;color:#58a7d5;font-size:25px;font-weight:bold}.countdown span{font-size:10px;color:#86a4b3;display:block;margin-top:4px}
+.songs{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+.song{background:white;border:1px solid var(--line);border-radius:22px;overflow:hidden;box-shadow:0 12px 30px #529ec011;transition:.3s}
+.song:hover{transform:translateY(-9px);box-shadow:0 20px 40px #5ba4c52e}
+.song-art{height:186px;display:flex;justify-content:center;align-items:center;position:relative;overflow:hidden;background:linear-gradient(130deg,#c8eeff,#e9e2ff)}
+.song:nth-child(2) .song-art{background:linear-gradient(130deg,#fce4f3,#c8f2ff)}
+.song:nth-child(3) .song-art{background:linear-gradient(130deg,#dbf6fa,#e0e3ff)}
+.song-art img{width:100%;height:100%;object-fit:contain;mix-blend-mode:multiply;transition:.4s}.song:hover img{transform:scale(1.06)}
+.song-body{padding:22px}.song-body small{color:#87b3c9;letter-spacing:2px;font-weight:bold}.song-body h3{margin:10px 0 7px;color:#3b88b2}.song-body p{color:#9aafbc;font-size:13px;margin-bottom:18px}
+.song-body a{display:inline-block;border-radius:20px;background:#e8f8ff;color:#48a7d8;padding:9px 16px;font-size:12px;font-weight:bold}
+.quote{margin:100px 0 20px;text-align:center;background:linear-gradient(115deg,#6fcaff,#acb8ff);border-radius:27px;padding:65px 15px;color:white;position:relative;overflow:hidden}
+.quote::before,.quote::after{content:"♪";font-size:170px;position:absolute;opacity:.12;top:-35px;left:6%}.quote::after{left:auto;right:6%;top:auto;bottom:-55px}
+.quote h2{font-size:34px;letter-spacing:3px;margin-bottom:12px}.quote p{opacity:.88;font-size:14px}
+footer{text-align:center;padding:30px;color:#a0b7c5;font-size:12px}
+.player{position:fixed;bottom:0;left:0;right:0;z-index:9;background:#ffffffed;backdrop-filter:blur(18px);border-top:1px solid #dcedf6;box-shadow:0 -4px 25px #3ca6cd14}
+.player-inner{width:min(1100px,94%);min-height:76px;margin:auto;display:flex;align-items:center;gap:15px}
+.disc{height:43px;width:43px;border-radius:50%;background:linear-gradient(135deg,#69d0ff,#b4a6fa);display:grid;place-items:center;color:white;font-size:20px}
+.track{width:170px;flex-shrink:0}.track strong{display:block;font-size:13px;color:#3a8bad;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.track span{display:block;color:#9bb0bc;font-size:11px;margin-top:5px}
+.play{width:39px;height:39px;border:0;border-radius:50%;background:#66ccff;color:white;font-size:16px;flex-shrink:0}
+#progress{appearance:none;-webkit-appearance:none;height:5px;flex:1;min-width:35px;background:#ddecf4;border-radius:10px;cursor:pointer;accent-color:#65c6ee}
+#progress::-webkit-slider-thumb{appearance:none;width:13px;height:13px;border-radius:50%;background:#54bdeb}
+#time{font-size:12px;color:#88a4b7;white-space:nowrap}.upload{cursor:pointer;white-space:nowrap;color:#419dc9;border:1px solid #aedff2;background:#eefaff;padding:10px 14px;border-radius:20px;font-size:12px;font-weight:bold}
+#file{display:none}
+@media(max-width:850px){.links{display:none}.hero{grid-template-columns:1fr;text-align:center;padding-top:40px}.hero-copy{padding:15px 0 0}.btn-row{justify-content:center}.hero-art{height:450px}.hero-art img{height:450px}.halo{left:50%;right:auto;top:20px;transform:translateX(-50%);width:355px;height:355px}.float-label.one{right:4%;top:55px}.float-label.two{left:2%;bottom:65px}.about{grid-template-columns:1fr}.songs{grid-template-columns:1fr 1fr}.note.a{top:60px}}
+@media(max-width:540px){h1{font-size:64px}.english{font-size:12px;letter-spacing:5px}.hero-art{height:350px}.hero-art img{height:355px}.halo{width:300px;height:300px}.float-label{font-size:11px;padding:9px 11px}.songs{grid-template-columns:1fr}.section{padding-top:65px}.section-heading h2{font-size:28px}.about-card{padding:24px}.quote{margin-top:65px;padding:50px 12px}.quote h2{font-size:25px}.track{width:90px}.track span{display:none}.player-inner{gap:9px}.disc{display:none}.upload{padding:9px;font-size:11px}#time{display:none}.countdown div{min-width:58px;font-size:22px}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;scroll-behavior:auto!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="hero-shell" id="home">
+ <div class="wrap">
+  <nav>
+   <a href="#home" class="logo">洛天依 <small>LUO TIANYI ♫</small></a>
+   <div class="links"><a href="#home">首页</a><a href="#about">关于天依</a><a href="#songs">音乐星球</a><a href="#birthday">生日应援</a></div>
+   <a class="nav-btn" href="https://vsinger.com/vsinger" target="_blank" rel="noopener noreferrer">认识天依 ↗</a>
+  </nav>
+  <main class="hero">
+   <div class="hero-copy">
+    <span class="eyebrow">✦ WELCOME TO TIANYI'S WORLD</span>
+    <h1>洛天依</h1>
+    <div class="english">LUO TIANYI · 66CCFF</div>
+    <p class="lead">穿越星光与旋律，与你相遇。<br>愿每一份心意，都能化作动听的歌声。<br>♪ 让世界充满歌声 ♪</p>
+    <div class="btn-row"><a class="btn btn-main" href="#songs">♫ 探索音乐星球</a><a class="btn btn-soft" href="#about">♡ 了解天依</a></div>
+   </div>
+   <div class="hero-art">
+    <div class="halo"></div>
+    <img src="https://storage.moegirl.org.cn/moegirl/commons/3/30/%E6%B4%9B%E5%A4%A9%E4%BE%9DV4%E5%AE%98%E6%96%B9%E6%B8%B2%E6%9F%932.png" alt="洛天依角色立绘" onerror="this.onerror=null;this.src='https://static.vocadb.net/img/Artist/mainOrig/86072.png?v=17'">
+    <span class="float-label one">✧ 天依蓝 #66CCFF</span><span class="float-label two">♡ 今天也要元气满满</span>
+   </div>
+   <span class="note a">♫</span><span class="note b">♪</span><span class="note c">♬</span>
+  </main>
+ </div>
+</div>
+<svg class="wave" viewBox="0 0 1440 100" preserveAspectRatio="none" aria-hidden="true"><path d="M0,40 C300,120 470,0 740,48 C1000,100 1180,15 1440,52 L1440,100 L0,100Z"/></svg>
+<div class="wrap">
+ <section class="section" id="about">
+  <div class="section-heading"><div class="overline">ABOUT HER</div><h2>遇见那个闪闪发光的女孩 ✦</h2><p>一抹属于天空的蓝，一段值得被听见的旋律。</p></div>
+  <div class="about">
+   <div class="about-card"><h3>♫ 关于洛天依</h3><p>洛天依是 Vsinger 旗下的中文虚拟歌手。温柔、细腻，也拥有不放弃的勇气。她用歌声传递幸福与感动，陪伴每一个喜欢音乐的人。</p><div class="stats"><div><strong>07.12</strong><span>生日</span></div><div><strong>156cm</strong><span>身高</span></div><div><strong>#66CCFF</strong><span>代表色</span></div></div></div>
+   <div class="birthday" id="birthday"><div class="cake">🎂</div><h3>距离天依的生日还有</h3><p>每年的 7 月 12 日，一起送出蓝色的祝福！</p><div class="countdown"><div><b id="days">--</b><span>天</span></div><div><b id="hours">--</b><span>时</span></div><div><b id="minutes">--</b><span>分</span></div><div><b id="seconds">--</b><span>秒</span></div></div></div>
+  </div>
+ </section>
+ <section class="section" id="songs">
+  <div class="section-heading"><div class="overline">MUSIC PLANET</div><h2>走进天依的音乐星球 ♬</h2><p>让我们在每一段旋律里，收藏心动的瞬间。</p></div>
+  <div class="songs">
+   <article class="song"><div class="song-art"><img loading="lazy" src="https://static.vocadb.net/img/Artist/mainOrig/86072.png?v=17" alt="洛天依V5形象"></div><div class="song-body"><small>TRACK 01</small><h3>夏虫</h3><p>在夏日里，听见属于天依的声音。</p><a target="_blank" rel="noopener noreferrer" href="https://search.bilibili.com/all?keyword=%E6%B4%9B%E5%A4%A9%E4%BE%9D%20%E5%A4%8F%E8%99%AB">去 B 站搜索试听 ↗</a></div></article>
+   <article class="song"><div class="song-art"><img loading="lazy" src="https://static.zerochan.net/Luo.Tianyi.full.2994232.png" alt="洛天依蓝色礼服插画"></div><div class="song-body"><small>TRACK 02</small><h3>万分之一的光</h3><p>像小小星光，照亮温柔的时刻。</p><a target="_blank" rel="noopener noreferrer" href="https://search.bilibili.com/all?keyword=%E6%B4%9B%E5%A4%A9%E4%BE%9D%20%E4%B8%87%E5%88%86%E4%B9%8B%E4%B8%80%E7%9A%84%E5%85%89">去 B 站搜索试听 ↗</a></div></article>
+   <article class="song"><div class="song-art"><img loading="lazy" src="https://luotianyi.vc/wp-content/uploads/2019-05-02_16-01-36.png" alt="洛天依可爱插画"></div><div class="song-body"><small>TRACK 03</small><h3>光与影的对白</h3><p>光影交错，一起聆听动人的故事。</p><a target="_blank" rel="noopener noreferrer" href="https://search.bilibili.com/all?keyword=%E6%B4%9B%E5%A4%A9%E4%BE%9D%20%E5%85%89%E4%B8%8E%E5%BD%B1%E7%9A%84%E5%AF%B9%E7%99%BD">去 B 站搜索试听 ↗</a></div></article>
+  </div>
+ </section>
+ <div class="quote"><h2>「让世界充满歌声」</h2><p>LUO TIANYI FAN PAGE · 愿我们每次相遇，都有音乐相伴 ♡</p></div>
+ <footer>洛天依主题练习页面 · 非官方粉丝设计 · 插画版权归原作者及相关权利人所有</footer>
+</div>
+<div class="player"><div class="player-inner"><div class="disc">♫</div><div class="track"><strong id="trackName">我的音乐小宇宙</strong><span>选择本地音频后播放</span></div><button class="play" id="play" aria-label="播放或暂停">▶</button><input id="progress" type="range" min="0" max="100" value="0" aria-label="播放进度"><span id="time">00:00 / 00:00</span><label class="upload" for="file">＋ 选择音乐</label><input id="file" type="file" accept="audio/*"><audio id="audio"></audio></div></div>
+<script>
+const $=id=>document.getElementById(id);
+function countdown(){
+ const now=new Date(),year=now.getFullYear();
+ let target=new Date(year,6,12,0,0,0);
+ if(now>=target && now<new Date(year,6,13)){
+  document.querySelector('#birthday h3').textContent='洛天依生日快乐！🎉';
+  ['days','hours','minutes','seconds'].forEach(id=>$(id).textContent='00');
+  return;
+ }
+ if(now>=target)target=new Date(year+1,6,12);
+ let s=Math.max(0,Math.floor((target-now)/1000));
+ $('days').textContent=Math.floor(s/86400);
+ $('hours').textContent=String(Math.floor(s%86400/3600)).padStart(2,'0');
+ $('minutes').textContent=String(Math.floor(s%3600/60)).padStart(2,'0');
+ $('seconds').textContent=String(s%60).padStart(2,'0');
+}
+countdown();setInterval(countdown,1000);
+const audio=$('audio');let objectURL=null;
+const timeFormat=s=>{if(!Number.isFinite(s))return '00:00';return String(Math.floor(s/60)).padStart(2,'0')+':'+String(Math.floor(s%60)).padStart(2,'0')};
+$('file').addEventListener('change',async e=>{
+ const file=e.target.files[0];if(!file)return;
+ audio.pause();if(objectURL)URL.revokeObjectURL(objectURL);
+ objectURL=URL.createObjectURL(file);audio.src=objectURL;
+ $('trackName').textContent=file.name.replace(/\.[^.]+$/,'');
+ try{await audio.play()}catch(err){console.info('点击播放按钮开始播放',err)}
+});
+$('play').addEventListener('click',()=>{if(!audio.src){$('file').click();return}audio.paused?audio.play().catch(console.error):audio.pause()});
+audio.addEventListener('play',()=>$('play').textContent='❚❚');
+audio.addEventListener('pause',()=>$('play').textContent='▶');
+audio.addEventListener('ended',()=>$('play').textContent='▶');
+audio.addEventListener('timeupdate',()=>{
+ $('progress').value=audio.duration?Math.floor(audio.currentTime/audio.duration*100):0;
+ $('time').textContent=timeFormat(audio.currentTime)+' / '+timeFormat(audio.duration);
+});
+audio.addEventListener('loadedmetadata',()=>$('time').textContent='00:00 / '+timeFormat(audio.duration));
+$('progress').addEventListener('input',e=>{if(audio.duration)audio.currentTime=audio.duration*e.target.value/100});
+</script>
+</body>
+</html>
