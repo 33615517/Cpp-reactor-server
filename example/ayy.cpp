@@ -1,12 +1,15 @@
 #include <iostream>
 #include <typeinfo>
+#include <cstdint>
 #include <cassert>
 #include <unistd.h>
 #include <any>
 
-class Any{
+class Any
+{
     private:
-        class holder {
+        class holder
+         {
             public:
                 virtual ~holder() {}
                 virtual const std::type_info& type() = 0;
