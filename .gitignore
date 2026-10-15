@@ -48,7 +48,6 @@ build-*/
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
-Makefile
 install_manifest.txt
 compile_commands.json
 
@@ -67,3 +66,30 @@ vcpkg_installed/
 # test output & cache
 Testing/
 .cache/
+
+# 本项目生成的可执行文件
+/source/echo/main
+/source/http/main
+/test/client
+/test/client[1-6]
+/test/server
+/test/servert
+/test/tcp_cli
+/test/tcp_srv
+/test/tcp_server
+/example/ayy
+/example/eventfd
+/example/regex
+/example/request
+/example/test
+/example/timewheel
+/WebBench/webbench
+/WebBench/tags
+
+# 上传测试的输入文件和服务器生成的副本，按需在本地生成
+/test/hello.txt
+/source/http/wwwroot/1234.txt
+
+# 调试器和系统生成的转储
+core
+core.*
