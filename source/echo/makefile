@@ -1,5 +1,13 @@
-main:main.cc
-	g++ -o main main.cc -lpthread
-.PHONY:clean
+CXX ?= g++
+CXXFLAGS ?= -std=c++20
+LDLIBS += -pthread
+HEADERS := echo.hpp ../server.hpp $(wildcard ../../logs/*.h ../../logs/*.hpp)
+
+.PHONY: all clean
+all: main
+
+main: main.cc $(HEADERS)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $< -o $@ $(LDFLAGS) $(LDLIBS)
+
 clean:
 	rm -f main
